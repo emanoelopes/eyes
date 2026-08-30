@@ -51,9 +51,13 @@ def refresh_for_conference(conference_name):
 
 def handle_event(event_type, payload, attributes):
     conf = conference_name_from_payload(payload)
-    if event_type.endswith('.ended') and '.conference.' in event_type:
-        refresh_for_conference(conf)
-        return
+
+    log.info(
+        "Evento Workspace recebido: %s | %s",
+        event_type,
+        conf,
+    )
+
     refresh_for_conference(conf)
 
 

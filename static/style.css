@@ -1,27 +1,299 @@
-* { box-sizing: border-box; }
-body { margin: 0; font-family: Inter, Segoe UI, Arial, sans-serif; background: #f4f6f8; color: #17202a; }
-main { max-width: 1500px; margin: 0 auto; padding: 24px; }
-header { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 20px; }
-h1 { margin: 0 0 4px; font-size: 28px; }
-header p { margin: 0; color: #68737d; }
-input { width: 300px; padding: 11px 13px; border: 1px solid #cbd2d9; border-radius: 8px; background: white; }
-.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-.summary div { background: white; border: 1px solid #e1e5e9; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; }
-.summary strong { font-size: 26px; }
-.summary span { color: #68737d; font-size: 13px; }
-.rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.room { background: white; border: 1px solid #e1e5e9; border-radius: 10px; padding: 16px; }
-.room.active { border-color: #7cbf8b; }
-.room-head { display: flex; justify-content: space-between; gap: 12px; }
-h2 { font-size: 16px; margin: 0 0 3px; }
-small { color: #68737d; }
-.status { font-size: 11px; font-weight: 700; padding: 5px 7px; border-radius: 999px; height: fit-content; }
-.status.on { background: #e8f5eb; color: #176b2c; }
-.status.off { background: #eef1f3; color: #59636d; }
-.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0; }
-.metrics div { display: flex; flex-direction: column; }
-.metrics b { font-size: 20px; }
-.metrics span { font-size: 12px; color: #68737d; }
-.join { display: block; text-align: center; padding: 9px 12px; border-radius: 7px; text-decoration: none; background: #1a73e8; color: white; font-weight: 600; }
-.error { font-size: 11px; color: #a22727; overflow-wrap: anywhere; }
-@media (max-width: 700px) { header { align-items: stretch; flex-direction: column; } input { width: 100%; } .summary { grid-template-columns: 1fr 1fr; } }
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    background: #f4f6f8;
+    color: #17202a;
+}
+
+main {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 24px;
+    margin-bottom: 20px;
+}
+
+h1 {
+    margin: 0 0 4px;
+    font-size: 28px;
+}
+
+header p {
+    margin: 0;
+    color: #68737d;
+}
+
+input {
+    width: 320px;
+    padding: 11px 13px;
+    border: 1px solid #cbd2d9;
+    border-radius: 8px;
+    background: white;
+}
+
+/* RESUMO GLOBAL */
+
+.summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.summary > div {
+    background: white;
+    border: 1px solid #e1e5e9;
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.summary strong {
+    font-size: 26px;
+}
+
+.summary span {
+    color: #68737d;
+    font-size: 13px;
+}
+
+/* GRUPOS BS */
+
+.rooms {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.room-group {
+    border: 1px solid
+        hsl(var(--hue) 45% 82%);
+    border-left: 6px solid
+        hsl(var(--hue) 65% 43%);
+
+    border-radius: 12px;
+    overflow: hidden;
+
+    background: white;
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    gap: 20px;
+
+    padding: 14px 18px;
+
+    background:
+        hsl(var(--hue) 70% 96%);
+}
+
+.group-header h2 {
+    margin: 0;
+    font-size: 22px;
+    color:
+        hsl(var(--hue) 65% 30%);
+}
+
+.group-header > div > span {
+    font-size: 12px;
+    color: #68737d;
+}
+
+.group-summary {
+    display: flex;
+    gap: 18px;
+}
+
+.group-summary span {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+
+    font-size: 11px;
+    color: #68737d;
+}
+
+.group-summary strong {
+    font-size: 18px;
+    color:
+        hsl(var(--hue) 60% 30%);
+}
+
+.group-rooms {
+    display: grid;
+
+    grid-template-columns:
+        repeat(auto-fill, minmax(230px, 1fr));
+
+    gap: 12px;
+
+    padding: 14px;
+}
+
+/* CARD DE REUNIÃO */
+
+.room {
+    background: white;
+    border: 1px solid #e1e5e9;
+    border-radius: 9px;
+    padding: 14px;
+
+    transition:
+        border-color 0.15s,
+        box-shadow 0.15s;
+}
+
+.room.principal {
+    border: 2px solid
+        hsl(var(--hue) 55% 55%);
+
+    background:
+        hsl(var(--hue) 60% 98%);
+}
+
+.room.active {
+    box-shadow:
+        0 0 0 2px rgba(32, 140, 75, 0.12);
+}
+
+.room-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.room h3 {
+    margin: 0 0 3px;
+    font-size: 15px;
+}
+
+small {
+    color: #68737d;
+}
+
+.status {
+    font-size: 10px;
+    font-weight: 700;
+
+    padding: 5px 7px;
+    border-radius: 999px;
+
+    height: fit-content;
+}
+
+.status.on {
+    background: #e6f4ea;
+    color: #137333;
+}
+
+.status.off {
+    background: #eef1f3;
+    color: #59636d;
+}
+
+/* MÉTRICAS */
+
+.metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+
+    margin: 16px 0;
+}
+
+.metrics div {
+    display: flex;
+    flex-direction: column;
+}
+
+.metrics b {
+    font-size: 19px;
+}
+
+.metrics span {
+    font-size: 11px;
+    color: #68737d;
+}
+
+.recording-on {
+    color: #c5221f;
+}
+
+/* BOTÃO */
+
+.join {
+    display: block;
+
+    text-align: center;
+
+    padding: 9px 12px;
+
+    border-radius: 7px;
+
+    text-decoration: none;
+
+    background:
+        hsl(var(--hue) 65% 43%);
+
+    color: white;
+
+    font-weight: 600;
+}
+
+.join:hover {
+    filter: brightness(0.92);
+}
+
+.error {
+    font-size: 11px;
+    color: #a22727;
+    overflow-wrap: anywhere;
+
+    background: #fff4f4;
+
+    border-radius: 5px;
+
+    padding: 7px;
+}
+
+/* MOBILE */
+
+@media (max-width: 800px) {
+    header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    input {
+        width: 100%;
+    }
+
+    .summary {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .group-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .group-summary {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
