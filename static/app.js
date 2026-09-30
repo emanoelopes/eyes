@@ -347,6 +347,49 @@ document
         }
     });
 
+async function gerarRelatorio() {
+    const box = document.querySelector("#report-box");
+    const textarea = document.querySelector("#report-text");
+
+    textarea.value = "Gerando relatório...";
+    box.classList.remove("hidden");
+
+    try {
+        const resp = await fetch("/api/report");
+        const text = await resp.text();
+        textarea.value = text;
+    } catch (error) {
+        textarea.value = "Falha ao gerar relatório: " + error;
+    }
+}
+
+document
+    .querySelector("#btn-relatorio")
+    .addEventListener("click", gerarRelatorio);
+
+document
+    .querySelector("#btn-fechar-relatorio")
+    .addEventListener("click", () => {
+        document.querySelector("#report-box").classList.add("hidden");
+    });
+
+document
+    .querySelector("#btn-copiar-relatorio")
+    .addEventListener("click", async () => {
+        const textarea = document.querySelector("#report-text");
+        textarea.select();
+
+        try {
+            await navigator.clipboard.writeText(textarea.value);
+            const btn = document.querySelector("#btn-copiar-relatorio");
+            const original = btn.textContent;
+            btn.textContent = "Copiado!";
+            setTimeout(() => { btn.textContent = original; }, 1500);
+        } catch (error) {
+            document.execCommand("copy");
+        }
+    });
+
 refresh();
 
 setInterval(refresh, 3000);

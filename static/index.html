@@ -19,8 +19,21 @@
           <input type="checkbox" id="hoje" checked>
           Somente salas de hoje
         </label>
+        <button id="btn-relatorio" class="report-btn" type="button">
+          📋 Gerar relatório (texto)
+        </button>
       </div>
     </header>
+    <div id="report-box" class="report-box hidden">
+      <div class="report-box-head">
+        <strong>Relatório para o coordenador</strong>
+        <div>
+          <button id="btn-copiar-relatorio" type="button">Copiar</button>
+          <button id="btn-fechar-relatorio" type="button">Fechar</button>
+        </div>
+      </div>
+      <textarea id="report-text" readonly></textarea>
+    </div>
     <section class="summary">
       <div><strong id="active_rooms">0</strong><span>salas ativas</span></div>
       <div><strong id="active_cells">0</strong><span>células ativas</span></div>

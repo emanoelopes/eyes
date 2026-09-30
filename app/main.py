@@ -2,9 +2,10 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
@@ -225,3 +226,70 @@ def status():
         'recording': sum(1 for r in rooms if r['recording']),
         'workspaceSubscription': subscription_info,
     }
+
+
+GROUP_ORDER = {'CS': 0, 'BS': 1, 'OS': 2}
+
+
+def _group_sort_key(name):
+    import re
+    m = re.match(r'^(CS|BS|OS)(\d+)$', name)
+    if not m:
+        return (99, 0)
+    return (GROUP_ORDER.get(m.group(1), 99), int(m.group(2)))
+
+
+@app.get('/api/report', response_class=PlainTextResponse)
+def report():
+    rooms = STORE.snapshot()
+
+    def is_main(title):
+        return str(title).strip().lower().startswith('sala')
+
+    by_group = {}
+    for r in rooms:
+        g = r.get('group') or 'OUTRAS'
+        by_group.setdefault(g, []).append(r)
+
+    now = datetime.now().strftime('%d/%m/%Y %H:%M')
+    total_active_rooms = sum(1 for r in rooms if r['active'] and is_main(r['title']))
+    total_active_cells = sum(1 for r in rooms if r['active'] and not is_main(r['title']))
+    total_participants = sum(r['participants'] for r in rooms)
+    total_recording = sum(1 for r in rooms if r['recording'])
+
+    lines = []
+    lines.append('RELATÓRIO DE MONITORAMENTO — SALAS DO PLANTÃO ETI')
+    lines.append(f'Gerado em: {now}')
+    lines.append('')
+    lines.append('RESUMO GERAL')
+    lines.append(f'- Salas principais ativas: {total_active_rooms}/10')
+    lines.append(f'- Células ativas: {total_active_cells}/60')
+    lines.append(f'- Participantes conectados (total): {total_participants}')
+    lines.append(f'- Gravações em andamento: {total_recording}')
+    lines.append('')
+    lines.append('DETALHAMENTO POR SALA')
+    lines.append('-' * 50)
+
+    for group in sorted(by_group, key=_group_sort_key):
+        items = by_group[group]
+        main_room = next((r for r in items if is_main(r['title'])), None)
+        cells_active = sum(1 for r in items if r['active'] and not is_main(r['title']))
+        participants_total = sum(r['participants'] for r in items)
+        formador = next((r.get('formador') for r in items if r.get('formador')), None)
+        presente = any(r.get('formador_presente') for r in items)
+        local = next((r.get('formador_localizacao') for r in items if r.get('formador_localizacao')), None)
+
+        status_sala = 'ATIVA' if (main_room and main_room['active']) else 'INATIVA'
+        gravando = 'Sim' if (main_room and main_room['recording']) else 'Não'
+
+        lines.append(f'{group}' + (f' — Formador: {formador}' if formador else ' — Formador: não identificado'))
+        lines.append(f'  Sala principal: {status_sala} | Gravando: {gravando}')
+        lines.append(f'  Participantes (sala + células): {participants_total} | Células ativas: {cells_active}/6')
+        if formador:
+            if presente:
+                lines.append(f'  Presença do formador: confirmada em "{local}"')
+            else:
+                lines.append('  Presença do formador: NÃO detectada em nenhuma sala/célula do grupo')
+        lines.append('')
+
+    return '\n'.join(lines)
