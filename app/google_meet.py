@@ -36,8 +36,11 @@ class MeetClient:
             f"https://meet.googleapis.com/v2/{conference_name}"
         )
 
-    def active_participant_count(self, conference_name):
-        count = 0
+    def active_participants(self, conference_name):
+        """Retorna a lista de participantes ativos (com nome de exibição).
+        Substitui a antiga active_participant_count para evitar 2 chamadas
+        de API por sala (contagem + nomes usavam o mesmo endpoint)."""
+        names = []
         page_token = None
 
         while True:
@@ -56,14 +59,21 @@ class MeetClient:
                 params=params,
             )
 
-            count += len(data.get("participants", []))
+            for p in data.get("participants", []):
+                display_name = (
+                    (p.get("signedinUser") or {}).get("displayName")
+                    or (p.get("anonymousUser") or {}).get("displayName")
+                    or (p.get("phoneUser") or {}).get("displayName")
+                    or "Desconhecido"
+                )
+                names.append(display_name)
 
             page_token = data.get("nextPageToken")
 
             if not page_token:
                 break
 
-        return count
+        return names
 
     def is_recording(self, conference_name):
         data = self._get(
@@ -129,6 +139,7 @@ class MeetClient:
 
         if not conference_name:
             room.participants = 0
+            room.participant_names = []
             room.recording = False
             room.start_time = None
             room.error = None
@@ -147,9 +158,11 @@ class MeetClient:
 
         # Participantes.
         try:
-            room.participants = self.active_participant_count(
+            names = self.active_participants(
                 conference_name
             )
+            room.participant_names = names
+            room.participants = len(names)
 
         except Exception as e:
             errors.append(f"participantes: {e}")

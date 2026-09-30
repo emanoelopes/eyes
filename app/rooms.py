@@ -3,6 +3,7 @@ import re
 from .models import RoomState
 
 MEET_RE = re.compile(r'https://meet\.google\.com/([a-z]{3}-[a-z]{4}-[a-z]{3})', re.I)
+GROUP_RE = re.compile(r'-\s*([A-Z]{2}\d+)\s*$')
 
 
 def load_rooms(path):
@@ -16,10 +17,13 @@ def load_rooms(path):
                 continue
             m = MEET_RE.search(url)
             code = m.group(1).lower() if m else None
+            gm = GROUP_RE.search(title.upper())
+            group = gm.group(1) if gm else None
             rooms.append(RoomState(
                 title=title,
                 meet_url=url,
                 day=(row.get('Dia') or '').strip(),
                 meeting_code=code,
+                group=group,
             ))
     return rooms

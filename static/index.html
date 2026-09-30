@@ -13,10 +13,17 @@
         <h1>Monitor Google Meet</h1>
         <p id="updated">Carregando...</p>
       </div>
-      <input id="search" placeholder="Filtrar sala..." autocomplete="off">
+      <div class="controls">
+        <input id="search" placeholder="Filtrar sala..." autocomplete="off">
+        <label class="toggle">
+          <input type="checkbox" id="hoje" checked>
+          Somente salas de hoje
+        </label>
+      </div>
     </header>
     <section class="summary">
-      <div><strong id="active">0</strong><span>salas ativas</span></div>
+      <div><strong id="active_rooms">0</strong><span>salas ativas</span></div>
+      <div><strong id="active_cells">0</strong><span>células ativas</span></div>
       <div><strong id="participants">0</strong><span>participantes</span></div>
       <div><strong id="recording">0</strong><span>gravando</span></div>
       <div><strong id="total">0</strong><span>salas / grupos</span></div>

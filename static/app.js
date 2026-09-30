@@ -1,4 +1,5 @@
 let rooms = [];
+const expandedParticipants = new Set();
 
 function esc(value) {
     return String(value ?? "").replace(
@@ -14,7 +15,7 @@ function esc(value) {
 }
 
 function getGroup(title) {
-    const match = String(title).match(/\b(BS|OS)\s*0*(\d+)\b/i);
+    const match = String(title).match(/\b(CS|BS|OS)\s*0*(\d+)\b/i);
 
     if (!match) {
         return "OUTRAS";
@@ -25,15 +26,16 @@ function getGroup(title) {
 
 
 function groupNumber(group) {
-    const match = group.match(/^(BS|OS)(\d+)$/i);
+    const match = group.match(/^(CS|BS|OS)(\d+)$/i);
 
     if (!match) {
         return 999999;
     }
 
     const prefixOrder = {
-        BS: 0,
-        OS: 1
+        CS: 0,
+        BS: 1,
+        OS: 2
     };
 
     const prefix = match[1].toUpperCase();
@@ -112,8 +114,8 @@ function renderRoom(room) {
             </div>
 
             <div class="metrics">
-                <div>
-                    <b>${room.participants}</b>
+                <div class="participants-cell" data-idx="${esc(room.meet_url)}">
+                    <b class="clickable-count">${room.participants}</b>
                     <span>Participantes</span>
                 </div>
 
@@ -125,11 +127,21 @@ function renderRoom(room) {
                 </div>
             </div>
 
+            <ul class="participants-list ${expandedParticipants.has(room.meet_url) ? "" : "hidden"}">
+                ${
+                    (room.participant_names && room.participant_names.length)
+                        ? room.participant_names.map(n => `<li>${esc(n)}</li>`).join("")
+                        : "<li>Nenhum participante</li>"
+                }
+            </ul>
+
             ${
                 room.error
                     ? `<p class="error">${esc(room.error)}</p>`
                     : ""
             }
+
+            <p class="meet-link-text">${esc(room.meet_url)}</p>
 
             <a
                 class="join"
@@ -158,6 +170,20 @@ function renderGroup(group, index) {
         room => room.recording
     ).length;
 
+    const mainRoom = group.items.find(isMainRoom);
+
+    const formadorInfo = group.items.find(r => r.formador);
+    const formadorHtml = formadorInfo
+        ? `<p class="formador ${formadorInfo.formador_presente ? "formador-presente" : "formador-ausente"}">
+                👤 ${esc(formadorInfo.formador)}
+                ${
+                    formadorInfo.formador_presente
+                        ? `— presente em <strong>${esc(formadorInfo.formador_localizacao)}</strong>`
+                        : "— não detectado em nenhuma sala do grupo"
+                }
+            </p>`
+        : "";
+
     // Uma cor diferente para cada BS.
     const hue = (210 + index * 43) % 360;
 
@@ -173,6 +199,14 @@ function renderGroup(group, index) {
                     <span>
                         ${group.items.length} reuniões
                     </span>
+
+                    ${
+                        mainRoom
+                            ? `<p class="meet-link-text group-link">${esc(mainRoom.meet_url)}</p>`
+                            : ""
+                    }
+
+                    ${formadorHtml}
                 </div>
 
                 <div class="group-summary">
@@ -200,6 +234,8 @@ function renderGroup(group, index) {
     `;
 }
 
+const DIA_HOJE = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"][new Date().getDay()];
+
 function render() {
     const q = document
         .querySelector("#search")
@@ -207,13 +243,19 @@ function render() {
         .trim()
         .toLowerCase();
 
+    const soHoje = document.querySelector("#hoje").checked;
+
     const filtered = rooms.filter(room => {
         const group = getGroup(room.title);
 
-        return (
+        const matchesText = (
             room.title.toLowerCase().includes(q) ||
             group.toLowerCase().includes(q)
         );
+
+        const matchesDia = !soHoje || room.day === DIA_HOJE;
+
+        return matchesText && matchesDia;
     });
 
     const groups = buildGroups(filtered);
@@ -238,8 +280,11 @@ async function refresh() {
 
         const status = await statusResponse.json();
 
-        document.querySelector("#active").textContent =
-            status.active;
+        document.querySelector("#active_rooms").textContent =
+            status.active_rooms ?? status.active;
+
+        document.querySelector("#active_cells").textContent =
+            status.active_cells ?? 0;
 
         document.querySelector("#participants").textContent =
             status.participants;
@@ -271,6 +316,36 @@ async function refresh() {
 document
     .querySelector("#search")
     .addEventListener("input", render);
+
+document
+    .querySelector("#hoje")
+    .addEventListener("change", render);
+
+document
+    .querySelector("#rooms")
+    .addEventListener("click", event => {
+        const cell = event.target.closest(".participants-cell");
+
+        if (!cell) {
+            return;
+        }
+
+        const list = cell
+            .closest("article")
+            .querySelector(".participants-list");
+
+        if (list) {
+            list.classList.toggle("hidden");
+
+            const url = cell.dataset.idx;
+
+            if (expandedParticipants.has(url)) {
+                expandedParticipants.delete(url);
+            } else {
+                expandedParticipants.add(url);
+            }
+        }
+    });
 
 refresh();
 
