@@ -15,6 +15,7 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
+from .cursistas import resolve_full_name
 from .formadores import find_formador_presence
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
@@ -330,8 +331,17 @@ def report():
 
         nomes = unique_names(items)
         if nomes:
-            lines.append(f'  Lista de presença ({len(nomes)}):')
-            for i, nome in enumerate(nomes, start=1):
+            resolvidos = []
+            for nome in nomes:
+                completo, achou = resolve_full_name(nome, group)
+                if achou and completo.strip().lower() != nome.strip().lower():
+                    resolvidos.append(f'{completo} (Meet: "{nome}")')
+                else:
+                    resolvidos.append(nome)
+            resolvidos.sort(key=lambda s: s.lower())
+
+            lines.append(f'  Lista de presença ({len(resolvidos)}):')
+            for i, nome in enumerate(resolvidos, start=1):
                 lines.append(f'    {i}. {nome}')
         else:
             lines.append('  Lista de presença: nenhum participante identificado.')

@@ -10,3 +10,4 @@ data/formadores.json
 google_token.json
 *.pyc
 __pycache__/
+data/cursistas.json

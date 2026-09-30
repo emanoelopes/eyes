@@ -31,6 +31,12 @@ if [ ! -f "${APP_DIR}/static/index.html" ] || [ ! -f "${APP_DIR}/tools/eti_token
     if [ -f "${BACKUP_DIR}/tools/make_formadores_json.py" ]; then
         cp "${BACKUP_DIR}/tools/make_formadores_json.py" "${APP_DIR}/tools/"
     fi
+    if [ -f "${BACKUP_DIR}/data/cursistas.json" ]; then
+        cp "${BACKUP_DIR}/data/cursistas.json" "${APP_DIR}/data/cursistas.json"
+    fi
+    if [ -f "${BACKUP_DIR}/tools/make_cursistas_json.py" ]; then
+        cp "${BACKUP_DIR}/tools/make_cursistas_json.py" "${APP_DIR}/tools/"
+    fi
 fi
 
 # 2b) formadores.json ausente mesmo após restaurar? Tenta regenerar da planilha.
@@ -38,6 +44,13 @@ if [ ! -f "${APP_DIR}/data/formadores.json" ] && [ -f "${APP_DIR}/tools/make_for
     echo "Regenerando data/formadores.json..."
     (cd "${APP_DIR}" && "${VENV_PY}" tools/make_formadores_json.py) \
         || echo "Aviso: falha ao gerar formadores.json, presença de formador ficará desativada."
+fi
+
+# 2c) cursistas.json ausente mesmo após restaurar? Tenta regenerar da planilha.
+if [ ! -f "${APP_DIR}/data/cursistas.json" ] && [ -f "${APP_DIR}/tools/make_cursistas_json.py" ]; then
+    echo "Regenerando data/cursistas.json..."
+    (cd "${APP_DIR}" && "${VENV_PY}" tools/make_cursistas_json.py) \
+        || echo "Aviso: falha ao gerar cursistas.json, heurística de nome completo ficará desativada."
 fi
 
 # 3) Regenerar o CSV de salas a partir da planilha viva (fonte de verdade).
