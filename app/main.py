@@ -246,24 +246,33 @@ def report():
     def is_main(title):
         return str(title).strip().lower().startswith('sala')
 
+    dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+    hoje = dia_semana[datetime.now().weekday()]
+
+    rooms_hoje = [r for r in rooms if r.get('day') == hoje]
+    rooms_for_report = rooms_hoje if rooms_hoje else rooms
+
     by_group = {}
-    for r in rooms:
+    for r in rooms_for_report:
         g = r.get('group') or 'OUTRAS'
         by_group.setdefault(g, []).append(r)
 
     now = datetime.now().strftime('%d/%m/%Y %H:%M')
-    total_active_rooms = sum(1 for r in rooms if r['active'] and is_main(r['title']))
-    total_active_cells = sum(1 for r in rooms if r['active'] and not is_main(r['title']))
-    total_participants = sum(r['participants'] for r in rooms)
-    total_recording = sum(1 for r in rooms if r['recording'])
+    total_active_rooms = sum(1 for r in rooms_for_report if r['active'] and is_main(r['title']))
+    total_active_cells = sum(1 for r in rooms_for_report if r['active'] and not is_main(r['title']))
+    total_participants = sum(r['participants'] for r in rooms_for_report)
+    total_recording = sum(1 for r in rooms_for_report if r['recording'])
+    total_grupos = len(by_group)
 
     lines = []
     lines.append('RELATÓRIO DE MONITORAMENTO — SALAS DO PLANTÃO ETI')
-    lines.append(f'Gerado em: {now}')
+    lines.append(f'Gerado em: {now} ({hoje})')
+    if not rooms_hoje:
+        lines.append('(Aviso: nenhuma sala marcada para hoje — mostrando todas as salas.)')
     lines.append('')
     lines.append('RESUMO GERAL')
-    lines.append(f'- Salas principais ativas: {total_active_rooms}/10')
-    lines.append(f'- Células ativas: {total_active_cells}/60')
+    lines.append(f'- Salas principais ativas: {total_active_rooms}/{total_grupos}')
+    lines.append(f'- Células ativas: {total_active_cells}/{total_grupos * 6}')
     lines.append(f'- Participantes conectados (total): {total_participants}')
     lines.append(f'- Gravações em andamento: {total_recording}')
     lines.append('')
