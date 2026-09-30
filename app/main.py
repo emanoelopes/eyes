@@ -246,6 +246,21 @@ def report():
     def is_main(title):
         return str(title).strip().lower().startswith('sala')
 
+    def norm_name(n):
+        return str(n or '').strip().lower()
+
+    def unique_count(room_list):
+        names = set()
+        anon = 0
+        for r in room_list:
+            for n in (r.get('participant_names') or []):
+                nn = norm_name(n)
+                if nn:
+                    names.add(nn)
+                else:
+                    anon += 1
+        return len(names) + anon
+
     dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
     hoje = dia_semana[datetime.now().weekday()]
 
@@ -260,7 +275,7 @@ def report():
     now = datetime.now().strftime('%d/%m/%Y %H:%M')
     total_active_rooms = sum(1 for r in rooms_for_report if r['active'] and is_main(r['title']))
     total_active_cells = sum(1 for r in rooms_for_report if r['active'] and not is_main(r['title']))
-    total_participants = sum(r['participants'] for r in rooms_for_report)
+    total_participants = unique_count(rooms_for_report)
     total_recording = sum(1 for r in rooms_for_report if r['recording'])
     total_grupos = len(by_group)
 
@@ -273,8 +288,10 @@ def report():
     lines.append('RESUMO GERAL')
     lines.append(f'- Salas principais ativas: {total_active_rooms}/{total_grupos}')
     lines.append(f'- Células ativas: {total_active_cells}/{total_grupos * 6}')
-    lines.append(f'- Participantes conectados (total): {total_participants}')
+    lines.append(f'- Participantes únicos conectados (total): {total_participants}')
     lines.append(f'- Gravações em andamento: {total_recording}')
+    lines.append('(Contagem de participantes deduplicada por nome — um cursista logado')
+    lines.append(' simultaneamente na sala principal e numa célula conta uma única vez.)')
     lines.append('')
     lines.append('DETALHAMENTO POR SALA')
     lines.append('-' * 50)
@@ -283,7 +300,7 @@ def report():
         items = by_group[group]
         main_room = next((r for r in items if is_main(r['title'])), None)
         cells_active = sum(1 for r in items if r['active'] and not is_main(r['title']))
-        participants_total = sum(r['participants'] for r in items)
+        participants_total = unique_count(items)
         formador = next((r.get('formador') for r in items if r.get('formador')), None)
         presente = any(r.get('formador_presente') for r in items)
         local = next((r.get('formador_localizacao') for r in items if r.get('formador_localizacao')), None)
@@ -293,7 +310,7 @@ def report():
 
         lines.append(f'{group}' + (f' — Formador: {formador}' if formador else ' — Formador: não identificado'))
         lines.append(f'  Sala principal: {status_sala} | Gravando: {gravando}')
-        lines.append(f'  Participantes (sala + células): {participants_total} | Células ativas: {cells_active}/6')
+        lines.append(f'  Participantes únicos (sala + células): {participants_total} | Células ativas: {cells_active}/6')
         if formador:
             if presente:
                 lines.append(f'  Presença do formador: confirmada em "{local}"')
