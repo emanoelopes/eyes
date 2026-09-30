@@ -15,7 +15,7 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
-from .cursistas import resolve_full_name
+from .cursistas import resolve_full_name, absent_students, roster_for_group
 from .formadores import find_formador_presence
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
@@ -337,6 +337,9 @@ def report():
     lines.append(f'- Gravações em andamento: {total_recording}')
     lines.append('(Contagem de participantes deduplicada por nome — um cursista logado')
     lines.append(' simultaneamente na sala principal e numa célula conta uma única vez.)')
+    lines.append('(A lista de "Ausentes" cruza com a matrícula oficial pelo nome; cursistas')
+    lines.append(' que aparecem no Meet com nome muito abreviado/incompleto podem constar')
+    lines.append(' como ausentes por engano — confirme visualmente antes de dar falta.)')
     lines.append('')
     lines.append('DETALHAMENTO POR SALA')
     lines.append('-' * 50)
@@ -365,9 +368,15 @@ def report():
         sessoes = unique_names(items)
         if sessoes:
             resolvidos = []
+            nomes_resolvidos_completos = []
             for s in sessoes:
                 nome = s['name']
                 completo, achou = resolve_full_name(nome, group)
+                if achou:
+                    nomes_resolvidos_completos.append(completo)
+                else:
+                    nomes_resolvidos_completos.append(nome)
+
                 if achou and completo.strip().lower() != nome.strip().lower():
                     label = f'{completo} (Meet: "{nome}")'
                 else:
@@ -387,7 +396,20 @@ def report():
             for i, nome in enumerate(resolvidos, start=1):
                 lines.append(f'    {i}. {nome}')
         else:
+            nomes_resolvidos_completos = []
             lines.append('  Lista de presença: nenhum participante identificado.')
+
+        roster = roster_for_group(group)
+        if roster:
+            ausentes = absent_students(group, nomes_resolvidos_completos)
+            lines.append(f'  Ausentes ({len(ausentes)} de {len(roster)} matriculados):')
+            if ausentes:
+                for i, nome in enumerate(ausentes, start=1):
+                    lines.append(f'    {i}. {nome}')
+            else:
+                lines.append('    Nenhum — todos os matriculados estão conectados.')
+        else:
+            lines.append('  Ausentes: lista de matrícula da sala não disponível.')
 
         lines.append('')
 

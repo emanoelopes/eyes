@@ -52,7 +52,6 @@ _STOPWORDS = {"de", "da", "do", "das", "dos", "e"}
 
 def resolve_full_name(meet_name, group):
     """Retorna (nome_resolvido, encontrado: bool).
-
     `nome_resolvido` é o nome completo do cursista quando a heurística acha
     um candidato confiável; caso contrário, devolve `meet_name` original.
     """
@@ -103,3 +102,21 @@ def resolve_full_name(meet_name, group):
         return melhor, True
 
     return meet_name, False
+
+
+def roster_for_group(group):
+    """Lista oficial (nomes completos) de cursistas matriculados na sala,
+    conforme a aba Turmas da planilha GERAL-Formadores."""
+    return list(_MAP.get(group) or [])
+
+
+def absent_students(group, present_full_names):
+    """Retorna, em ordem alfabética, os nomes da lista oficial do grupo que
+    NÃO batem com nenhum nome já resolvido/presente (`present_full_names`:
+    coleção de nomes completos ou nomes do Meet já processados por
+    resolve_full_name). Comparação normalizada (acento/caixa)."""
+    presentes_norm = {_normalize(n) for n in present_full_names}
+    return sorted(
+        (c for c in roster_for_group(group) if _normalize(c) not in presentes_norm),
+        key=lambda s: s.lower(),
+    )
