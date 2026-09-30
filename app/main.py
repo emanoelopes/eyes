@@ -263,15 +263,48 @@ def report():
         return len(names) + anon
 
     def unique_names(room_list):
-        """Nomes únicos exibidos como no Meet (mantém a 1ª grafia vista),
-        ordenados alfabeticamente — usado para a lista de presença."""
+        """Sessões únicas por nome (mantém a 1ª grafia vista e o MENOR
+        joined_at entre as salas onde a pessoa aparece — cobre o caso de
+        estar logada simultaneamente na sala principal e numa célula, onde
+        cada uma tem seu próprio horário de entrada naquela sala
+        específica). Ordenado alfabeticamente — usado na lista de presença.
+        Retorna dicts: {name, joined_at}."""
         seen = {}
         for r in room_list:
-            for n in (r.get('participant_names') or []):
-                nn = norm_name(n)
-                if nn and nn not in seen:
-                    seen[nn] = str(n).strip()
-        return sorted(seen.values(), key=lambda s: s.lower())
+            for s in (r.get('participant_sessions') or []):
+                name = s.get('name')
+                nn = norm_name(name)
+                if not nn:
+                    continue
+                joined = s.get('joined_at')
+                if nn not in seen:
+                    seen[nn] = {'name': str(name).strip(), 'joined_at': joined}
+                elif joined and (not seen[nn]['joined_at'] or joined < seen[nn]['joined_at']):
+                    seen[nn]['joined_at'] = joined
+        return sorted(seen.values(), key=lambda d: d['name'].lower())
+
+    def format_duration(joined_at_iso):
+        if not joined_at_iso:
+            return None
+        try:
+            joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
+        except Exception:
+            return None
+        delta = datetime.now(joined.tzinfo) - joined
+        total_min = int(delta.total_seconds() // 60)
+        if total_min < 0:
+            total_min = 0
+        h, m = divmod(total_min, 60)
+        return f'{h}h{m:02d}min' if h else f'{m}min'
+
+    def format_hora(joined_at_iso):
+        if not joined_at_iso:
+            return None
+        try:
+            joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
+        except Exception:
+            return None
+        return joined.astimezone().strftime('%H:%M')
 
     dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
     hoje = dia_semana[datetime.now().weekday()]
@@ -329,15 +362,25 @@ def report():
             else:
                 lines.append('  Presença do formador: NÃO detectada em nenhuma sala/célula do grupo')
 
-        nomes = unique_names(items)
-        if nomes:
+        sessoes = unique_names(items)
+        if sessoes:
             resolvidos = []
-            for nome in nomes:
+            for s in sessoes:
+                nome = s['name']
                 completo, achou = resolve_full_name(nome, group)
                 if achou and completo.strip().lower() != nome.strip().lower():
-                    resolvidos.append(f'{completo} (Meet: "{nome}")')
+                    label = f'{completo} (Meet: "{nome}")'
                 else:
-                    resolvidos.append(nome)
+                    label = nome
+
+                hora = format_hora(s['joined_at'])
+                dur = format_duration(s['joined_at'])
+                if hora and dur:
+                    label += f' — entrou às {hora}, conectado há {dur}'
+                elif dur:
+                    label += f' — conectado há {dur}'
+
+                resolvidos.append(label)
             resolvidos.sort(key=lambda s: s.lower())
 
             lines.append(f'  Lista de presença ({len(resolvidos)}):')

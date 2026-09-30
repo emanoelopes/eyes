@@ -12,6 +12,7 @@ class RoomState:
     active: bool = False
     participants: int = 0
     participant_names: list = None
+    participant_sessions: list = None
     recording: bool = False
     conference_record: Optional[str] = None
     start_time: Optional[str] = None
@@ -25,6 +26,8 @@ class RoomState:
     def __post_init__(self):
         if self.participant_names is None:
             self.participant_names = []
+        if self.participant_sessions is None:
+            self.participant_sessions = []
 
     def to_dict(self):
         return asdict(self)

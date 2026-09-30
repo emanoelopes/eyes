@@ -37,10 +37,13 @@ class MeetClient:
         )
 
     def active_participants(self, conference_name):
-        """Retorna a lista de participantes ativos (com nome de exibição).
-        Substitui a antiga active_participant_count para evitar 2 chamadas
-        de API por sala (contagem + nomes usavam o mesmo endpoint)."""
-        names = []
+        """Retorna a lista de participantes ativos, cada um como dict com
+        nome, horário de ingresso (`earliestStartTime`, ISO 8601 UTC) e o
+        nome bruto do Meet. Um único participante pode ter entrado e saído
+        várias vezes na mesma conferência; `earliestStartTime` é o início da
+        sessão mais antiga ainda aberta (a API já filtra por
+        `latest_end_time IS NULL`, ou seja, sessão atual em andamento)."""
+        participants = []
         page_token = None
 
         while True:
@@ -66,14 +69,17 @@ class MeetClient:
                     or (p.get("phoneUser") or {}).get("displayName")
                     or "Desconhecido"
                 )
-                names.append(display_name)
+                participants.append({
+                    "name": display_name,
+                    "joined_at": p.get("earliestStartTime"),
+                })
 
             page_token = data.get("nextPageToken")
 
             if not page_token:
                 break
 
-        return names
+        return participants
 
     def is_recording(self, conference_name):
         data = self._get(
@@ -140,6 +146,7 @@ class MeetClient:
         if not conference_name:
             room.participants = 0
             room.participant_names = []
+            room.participant_sessions = []
             room.recording = False
             room.start_time = None
             room.error = None
@@ -156,13 +163,14 @@ class MeetClient:
         except Exception as e:
             errors.append(f"conferência: {e}")
 
-        # Participantes.
+        # Participantes (nome + horário de ingresso de cada um).
         try:
-            names = self.active_participants(
+            sessions = self.active_participants(
                 conference_name
             )
-            room.participant_names = names
-            room.participants = len(names)
+            room.participant_sessions = sessions
+            room.participant_names = [s["name"] for s in sessions]
+            room.participants = len(sessions)
 
         except Exception as e:
             errors.append(f"participantes: {e}")
