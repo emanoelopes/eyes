@@ -261,6 +261,17 @@ def report():
                     anon += 1
         return len(names) + anon
 
+    def unique_names(room_list):
+        """Nomes únicos exibidos como no Meet (mantém a 1ª grafia vista),
+        ordenados alfabeticamente — usado para a lista de presença."""
+        seen = {}
+        for r in room_list:
+            for n in (r.get('participant_names') or []):
+                nn = norm_name(n)
+                if nn and nn not in seen:
+                    seen[nn] = str(n).strip()
+        return sorted(seen.values(), key=lambda s: s.lower())
+
     dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
     hoje = dia_semana[datetime.now().weekday()]
 
@@ -316,6 +327,15 @@ def report():
                 lines.append(f'  Presença do formador: confirmada em "{local}"')
             else:
                 lines.append('  Presença do formador: NÃO detectada em nenhuma sala/célula do grupo')
+
+        nomes = unique_names(items)
+        if nomes:
+            lines.append(f'  Lista de presença ({len(nomes)}):')
+            for i, nome in enumerate(nomes, start=1):
+                lines.append(f'    {i}. {nome}')
+        else:
+            lines.append('  Lista de presença: nenhum participante identificado.')
+
         lines.append('')
 
     return '\n'.join(lines)
