@@ -154,6 +154,11 @@ async def lifespan(app: FastAPI):
     STORE.set_rooms(rooms)
     log.info('Carregadas %d salas de %s', len(rooms), ROOMS_CSV)
 
+    # Recupera o log cumulativo de presença caso o processo tenha caído e
+    # reiniciado NO MEIO do encontro de hoje (mesma data) — se for de outro
+    # dia, attendance.load() descarta e começa vazio.
+    attendance.load()
+
     credentials = await asyncio.to_thread(get_user_credentials)
     meet_client = MeetClient(credentials)
 
@@ -183,6 +188,7 @@ async def lifespan(app: FastAPI):
         reconcile_task.cancel()
     if listener:
         await asyncio.to_thread(listener.stop)
+    attendance.save_now()
 
 
 app = FastAPI(title='Monitor Google Meet', lifespan=lifespan)

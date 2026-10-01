@@ -12,3 +12,4 @@ google_token.json
 __pycache__/
 data/cursistas.json
 data/relatorios/
+data/attendance_state.json
