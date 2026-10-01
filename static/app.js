@@ -390,6 +390,28 @@ document
         }
     });
 
+document
+    .querySelector("#btn-salvar-relatorio")
+    .addEventListener("click", async () => {
+        const btn = document.querySelector("#btn-salvar-relatorio");
+        const original = btn.textContent;
+        btn.textContent = "Salvando...";
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/report/save", { method: "POST" });
+            const data = await resp.json();
+            btn.textContent = `Salvo: ${data.name}`;
+        } catch (error) {
+            btn.textContent = "Falha ao salvar";
+        }
+
+        setTimeout(() => {
+            btn.textContent = original;
+            btn.disabled = false;
+        }, 3000);
+    });
+
 refresh();
 
 setInterval(refresh, 3000);

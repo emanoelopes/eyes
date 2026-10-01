@@ -59,6 +59,11 @@ header {
     background: #f0f3f6;
 }
 
+.report-btn-link {
+    text-decoration: none;
+    display: inline-block;
+}
+
 .report-box {
     background: white;
     border: 1px solid #e1e5e9;

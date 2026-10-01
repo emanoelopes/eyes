@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
@@ -15,10 +15,11 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
-from .cursistas import resolve_full_name, absent_students, roster_for_group
 from .formadores import find_formador_presence
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
+from .report import build_report_data, render_text, render_html
+from .report_store import save_report, list_saved_reports, REPORTS_DIR
 from .rooms import load_rooms
 from .state import STORE
 from .workspace_events import WorkspaceEventsClient
@@ -229,188 +230,33 @@ def status():
     }
 
 
-GROUP_ORDER = {'CS': 0, 'BS': 1, 'OS': 2}
-
-
-def _group_sort_key(name):
-    import re
-    m = re.match(r'^(CS|BS|OS)(\d+)$', name)
-    if not m:
-        return (99, 0)
-    return (GROUP_ORDER.get(m.group(1), 99), int(m.group(2)))
-
-
 @app.get('/api/report', response_class=PlainTextResponse)
 def report():
-    rooms = STORE.snapshot()
+    data = build_report_data(STORE.snapshot())
+    return render_text(data)
 
-    def is_main(title):
-        return str(title).strip().lower().startswith('sala')
 
-    def norm_name(n):
-        return str(n or '').strip().lower()
+@app.get('/api/report.json')
+def report_json():
+    return build_report_data(STORE.snapshot())
 
-    def unique_count(room_list):
-        names = set()
-        anon = 0
-        for r in room_list:
-            for n in (r.get('participant_names') or []):
-                nn = norm_name(n)
-                if nn:
-                    names.add(nn)
-                else:
-                    anon += 1
-        return len(names) + anon
 
-    def unique_names(room_list):
-        """Sessões únicas por nome (mantém a 1ª grafia vista e o MENOR
-        joined_at entre as salas onde a pessoa aparece — cobre o caso de
-        estar logada simultaneamente na sala principal e numa célula, onde
-        cada uma tem seu próprio horário de entrada naquela sala
-        específica). Ordenado alfabeticamente — usado na lista de presença.
-        Retorna dicts: {name, joined_at}."""
-        seen = {}
-        for r in room_list:
-            for s in (r.get('participant_sessions') or []):
-                name = s.get('name')
-                nn = norm_name(name)
-                if not nn:
-                    continue
-                joined = s.get('joined_at')
-                if nn not in seen:
-                    seen[nn] = {'name': str(name).strip(), 'joined_at': joined}
-                elif joined and (not seen[nn]['joined_at'] or joined < seen[nn]['joined_at']):
-                    seen[nn]['joined_at'] = joined
-        return sorted(seen.values(), key=lambda d: d['name'].lower())
+@app.get('/api/report.html', response_class=HTMLResponse)
+def report_html():
+    data = build_report_data(STORE.snapshot())
+    return render_html(data)
 
-    def format_duration(joined_at_iso):
-        if not joined_at_iso:
-            return None
-        try:
-            joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
-        except Exception:
-            return None
-        delta = datetime.now(joined.tzinfo) - joined
-        total_min = int(delta.total_seconds() // 60)
-        if total_min < 0:
-            total_min = 0
-        h, m = divmod(total_min, 60)
-        return f'{h}h{m:02d}min' if h else f'{m}min'
 
-    def format_hora(joined_at_iso):
-        if not joined_at_iso:
-            return None
-        try:
-            joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
-        except Exception:
-            return None
-        return joined.astimezone().strftime('%H:%M')
+@app.post('/api/report/save')
+def report_save():
+    """Persiste o relatório do momento em data/relatorios/ (JSON+TXT+HTML).
+    Chamado automaticamente ao fechar o plantão (tools/fechar_monitor.sh)
+    e disponível também sob demanda (botão 'Salvar relatório do encontro'
+    no dashboard)."""
+    out_dir = save_report(STORE.snapshot())
+    return {'saved_to': str(out_dir), 'name': out_dir.name}
 
-    dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-    hoje = dia_semana[datetime.now().weekday()]
 
-    rooms_hoje = [r for r in rooms if r.get('day') == hoje]
-    rooms_for_report = rooms_hoje if rooms_hoje else rooms
-
-    by_group = {}
-    for r in rooms_for_report:
-        g = r.get('group') or 'OUTRAS'
-        by_group.setdefault(g, []).append(r)
-
-    now = datetime.now().strftime('%d/%m/%Y %H:%M')
-    total_active_rooms = sum(1 for r in rooms_for_report if r['active'] and is_main(r['title']))
-    total_active_cells = sum(1 for r in rooms_for_report if r['active'] and not is_main(r['title']))
-    total_participants = unique_count(rooms_for_report)
-    total_recording = sum(1 for r in rooms_for_report if r['recording'])
-    total_grupos = len(by_group)
-
-    lines = []
-    lines.append('RELATÓRIO DE MONITORAMENTO — SALAS DO PLANTÃO ETI')
-    lines.append(f'Gerado em: {now} ({hoje})')
-    if not rooms_hoje:
-        lines.append('(Aviso: nenhuma sala marcada para hoje — mostrando todas as salas.)')
-    lines.append('')
-    lines.append('RESUMO GERAL')
-    lines.append(f'- Salas principais ativas: {total_active_rooms}/{total_grupos}')
-    lines.append(f'- Células ativas: {total_active_cells}/{total_grupos * 6}')
-    lines.append(f'- Participantes únicos conectados (total): {total_participants}')
-    lines.append(f'- Gravações em andamento: {total_recording}')
-    lines.append('(Contagem de participantes deduplicada por nome — um cursista logado')
-    lines.append(' simultaneamente na sala principal e numa célula conta uma única vez.)')
-    lines.append('(A lista de "Ausentes" cruza com a matrícula oficial pelo nome; cursistas')
-    lines.append(' que aparecem no Meet com nome muito abreviado/incompleto podem constar')
-    lines.append(' como ausentes por engano — confirme visualmente antes de dar falta.)')
-    lines.append('')
-    lines.append('DETALHAMENTO POR SALA')
-    lines.append('-' * 50)
-
-    for group in sorted(by_group, key=_group_sort_key):
-        items = by_group[group]
-        main_room = next((r for r in items if is_main(r['title'])), None)
-        cells_active = sum(1 for r in items if r['active'] and not is_main(r['title']))
-        participants_total = unique_count(items)
-        formador = next((r.get('formador') for r in items if r.get('formador')), None)
-        presente = any(r.get('formador_presente') for r in items)
-        local = next((r.get('formador_localizacao') for r in items if r.get('formador_localizacao')), None)
-
-        status_sala = 'ATIVA' if (main_room and main_room['active']) else 'INATIVA'
-        gravando = 'Sim' if (main_room and main_room['recording']) else 'Não'
-
-        lines.append(f'{group}' + (f' — Formador: {formador}' if formador else ' — Formador: não identificado'))
-        lines.append(f'  Sala principal: {status_sala} | Gravando: {gravando}')
-        lines.append(f'  Participantes únicos (sala + células): {participants_total} | Células ativas: {cells_active}/6')
-        if formador:
-            if presente:
-                lines.append(f'  Presença do formador: confirmada em "{local}"')
-            else:
-                lines.append('  Presença do formador: NÃO detectada em nenhuma sala/célula do grupo')
-
-        sessoes = unique_names(items)
-        if sessoes:
-            resolvidos = []
-            nomes_resolvidos_completos = []
-            for s in sessoes:
-                nome = s['name']
-                completo, achou = resolve_full_name(nome, group)
-                if achou:
-                    nomes_resolvidos_completos.append(completo)
-                else:
-                    nomes_resolvidos_completos.append(nome)
-
-                if achou and completo.strip().lower() != nome.strip().lower():
-                    label = f'{completo} (Meet: "{nome}")'
-                else:
-                    label = nome
-
-                hora = format_hora(s['joined_at'])
-                dur = format_duration(s['joined_at'])
-                if hora and dur:
-                    label += f' — entrou às {hora}, conectado há {dur}'
-                elif dur:
-                    label += f' — conectado há {dur}'
-
-                resolvidos.append(label)
-            resolvidos.sort(key=lambda s: s.lower())
-
-            lines.append(f'  Lista de presença ({len(resolvidos)}):')
-            for i, nome in enumerate(resolvidos, start=1):
-                lines.append(f'    {i}. {nome}')
-        else:
-            nomes_resolvidos_completos = []
-            lines.append('  Lista de presença: nenhum participante identificado.')
-
-        roster = roster_for_group(group)
-        if roster:
-            ausentes = absent_students(group, nomes_resolvidos_completos)
-            lines.append(f'  Ausentes ({len(ausentes)} de {len(roster)} matriculados):')
-            if ausentes:
-                for i, nome in enumerate(ausentes, start=1):
-                    lines.append(f'    {i}. {nome}')
-            else:
-                lines.append('    Nenhum — todos os matriculados estão conectados.')
-        else:
-            lines.append('  Ausentes: lista de matrícula da sala não disponível.')
-
-        lines.append('')
-
-    return '\n'.join(lines)
+@app.get('/api/report/saved')
+def report_saved_list():
+    return {'reports': list_saved_reports()}
