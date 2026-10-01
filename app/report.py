@@ -3,10 +3,17 @@ oferece renderizadores para texto puro (WhatsApp/e-mail) e HTML com
 dataviz (Chart.js via CDN). Usado por app/main.py nos endpoints
 /api/report, /api/report.json, /api/report.html e /api/report/save, e
 por app/report_store.py na persistência automática ao final do plantão.
-"""
-from datetime import datetime
 
-from .cursistas import resolve_full_name, absent_students, roster_for_group
+IMPORTANTE: o relatório cobre o encontro DO INÍCIO AO FIM, não só o
+instante em que foi gerado — usa app/attendance.py (log cumulativo
+atualizado a cada ciclo de reconciliação) em vez do snapshot atual das
+salas. Quem entrou e já saiu antes da geração do relatório ainda aparece,
+com o tempo total que ficou conectado e indicação de que já saiu.
+"""
+from datetime import datetime, timezone
+
+from . import attendance
+from .cursistas import resolve_full_name, absent_students, roster_for_group, _normalize
 
 DIA_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 GROUP_ORDER = {'CS': 0, 'BS': 1, 'OS': 2}
@@ -41,35 +48,13 @@ def _unique_count(room_list):
     return len(names) + anon
 
 
-def _unique_sessions(room_list):
-    """Sessões únicas por nome (menor joined_at entre as salas onde a
-    pessoa aparece), ordenadas alfabeticamente. Retorna dicts:
-    {name, joined_at}."""
-    seen = {}
-    for r in room_list:
-        for s in (r.get('participant_sessions') or []):
-            name = s.get('name')
-            nn = _norm_name(name)
-            if not nn:
-                continue
-            joined = s.get('joined_at')
-            if nn not in seen:
-                seen[nn] = {'name': str(name).strip(), 'joined_at': joined}
-            elif joined and (not seen[nn]['joined_at'] or joined < seen[nn]['joined_at']):
-                seen[nn]['joined_at'] = joined
-    return sorted(seen.values(), key=lambda d: d['name'].lower())
-
-
-def _duration_minutes(joined_at_iso):
-    if not joined_at_iso:
+def _parse_iso(iso):
+    if not iso:
         return None
     try:
-        joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
+        return datetime.fromisoformat(iso.replace('Z', '+00:00'))
     except Exception:
         return None
-    delta = datetime.now(joined.tzinfo) - joined
-    minutes = int(delta.total_seconds() // 60)
-    return max(minutes, 0)
 
 
 def _format_duration(minutes):
@@ -79,21 +64,19 @@ def _format_duration(minutes):
     return f'{h}h{m:02d}min' if h else f'{m}min'
 
 
-def _format_hora(joined_at_iso):
-    if not joined_at_iso:
-        return None
-    try:
-        joined = datetime.fromisoformat(joined_at_iso.replace('Z', '+00:00'))
-    except Exception:
-        return None
-    return joined.astimezone().strftime('%H:%M')
+def _format_hora(iso):
+    dt = _parse_iso(iso)
+    return dt.astimezone().strftime('%H:%M') if dt else None
 
 
 def build_report_data(rooms):
-    """Monta a estrutura de dados do relatório a partir de STORE.snapshot().
+    """Monta a estrutura de dados do relatório a partir de STORE.snapshot()
+    (para saber o estado ATUAL de cada sala/formador) combinado com
+    app/attendance.py (para a presença acumulada do encontro inteiro).
     Não depende do FastAPI — pode ser chamada de qualquer contexto
     (endpoint, script de persistência, teste)."""
     now = datetime.now()
+    now_utc = datetime.now(timezone.utc)
     hoje = DIA_SEMANA[now.weekday()]
 
     rooms_hoje = [r for r in rooms if r.get('day') == hoje]
@@ -110,28 +93,47 @@ def build_report_data(rooms):
         items = by_group[group]
         main_room = next((r for r in items if _is_main(r['title'])), None)
         cells_active = sum(1 for r in items if r['active'] and not _is_main(r['title']))
-        participants_total = _unique_count(items)
         formador = next((r.get('formador') for r in items if r.get('formador')), None)
         presente = any(r.get('formador_presente') for r in items)
         local = next((r.get('formador_localizacao') for r in items if r.get('formador_localizacao')), None)
 
-        sessoes = _unique_sessions(items)
+        # Quem está conectado NESTE EXATO MOMENTO (para marcar "ainda
+        # conectado" x "já saiu" na lista cumulativa).
+        currently_connected = set()
+        for r in items:
+            for s in (r.get('participant_sessions') or []):
+                nn = _normalize(s.get('name'))
+                if nn:
+                    currently_connected.add(nn)
+
+        cumulative = attendance.snapshot_group(group)
+
         presence = []
         nomes_resolvidos_completos = []
-        for s in sessoes:
-            nome = s['name']
+        for nn, entry in cumulative.items():
+            nome = entry['name']
             completo, achou = resolve_full_name(nome, group)
             nomes_resolvidos_completos.append(completo if achou else nome)
-            minutos = _duration_minutes(s['joined_at'])
+
+            first_dt = _parse_iso(entry['first_seen'])
+            last_dt = _parse_iso(entry['last_seen'])
+            ainda_conectado = nn in currently_connected
+            fim = now_utc if ainda_conectado else (last_dt or now_utc)
+            minutos = None
+            if first_dt:
+                minutos = max(int((fim - first_dt).total_seconds() // 60), 0)
+
             presence.append({
                 'meet_name': nome,
                 'full_name': completo if achou else None,
                 'resolved': bool(achou and completo.strip().lower() != nome.strip().lower()),
-                'joined_at': s['joined_at'],
-                'hora': _format_hora(s['joined_at']),
+                'label': completo if achou else nome,
+                'joined_at': entry['first_seen'],
+                'hora_entrada': _format_hora(entry['first_seen']),
+                'hora_saida': None if ainda_conectado else _format_hora(entry['last_seen']),
+                'ainda_conectado': ainda_conectado,
                 'duration_minutes': minutos,
                 'duration_label': _format_duration(minutos),
-                'label': completo if achou else nome,
             })
         presence.sort(key=lambda p: p['label'].lower())
 
@@ -145,7 +147,7 @@ def build_report_data(rooms):
             'formador_localizacao': local,
             'status_sala_ativa': bool(main_room and main_room['active']),
             'gravando': bool(main_room and main_room['recording']),
-            'participants_total': participants_total,
+            'participants_total': len(presence),
             'cells_active': cells_active,
             'cells_total': 6,
             'presence': presence,
@@ -155,7 +157,7 @@ def build_report_data(rooms):
 
     total_active_rooms = sum(1 for r in rooms_for_report if r['active'] and _is_main(r['title']))
     total_active_cells = sum(1 for r in rooms_for_report if r['active'] and not _is_main(r['title']))
-    total_participants = _unique_count(rooms_for_report)
+    total_participants = sum(len(g['presence']) for g in groups_out)
     total_recording = sum(1 for r in rooms_for_report if r['recording'])
 
     return {
@@ -176,13 +178,15 @@ def render_text(data):
     lines = []
     lines.append('RELATÓRIO DE MONITORAMENTO — SALAS DO PLANTÃO ETI')
     lines.append(f"Gerado em: {data['generated_at_label']} ({data['dia']})")
+    lines.append('Cobertura: do início do encontro até agora (quem já saiu também aparece,')
+    lines.append(' marcado como [SAIU], com o período em que esteve conectado).')
     if not data['used_today_filter']:
         lines.append('(Aviso: nenhuma sala marcada para hoje — mostrando todas as salas.)')
     lines.append('')
     lines.append('RESUMO GERAL')
     lines.append(f"- Salas principais ativas: {data['total_active_rooms']}/{data['total_grupos']}")
     lines.append(f"- Células ativas: {data['total_active_cells']}/{data['total_grupos'] * 6}")
-    lines.append(f"- Participantes únicos conectados (total): {data['total_participants']}")
+    lines.append(f"- Participantes únicos que passaram pelo encontro (total): {data['total_participants']}")
     lines.append(f"- Gravações em andamento: {data['total_recording']}")
     lines.append('(Contagem de participantes deduplicada por nome — um cursista logado')
     lines.append(' simultaneamente na sala principal e numa célula conta uma única vez.)')
@@ -212,10 +216,13 @@ def render_text(data):
                 label = p['label']
                 if p['resolved']:
                     label = f"{p['full_name']} (Meet: \"{p['meet_name']}\")"
-                if p['hora'] and p['duration_label']:
-                    label += f" — entrou às {p['hora']}, conectado há {p['duration_label']}"
-                elif p['duration_label']:
-                    label += f" — conectado há {p['duration_label']}"
+                if not p['ainda_conectado']:
+                    label += ' [SAIU]'
+                if p['hora_entrada'] and p['duration_label']:
+                    if p['ainda_conectado']:
+                        label += f" — entrou às {p['hora_entrada']}, conectado há {p['duration_label']}"
+                    else:
+                        label += f" — {p['hora_entrada']} até {p['hora_saida']} (ficou {p['duration_label']})"
                 lines.append(f'    {i}. {label}')
         else:
             lines.append('  Lista de presença: nenhum participante identificado.')
@@ -253,12 +260,24 @@ def render_html(data):
     for g in data['groups']:
         status_class = 'on' if g['status_sala_ativa'] else 'off'
         formador_class = 'on' if g['formador_presente'] else 'off'
+
+        def _periodo(p):
+            if p['ainda_conectado']:
+                return f"{p['hora_entrada'] or '-'} → agora"
+            return f"{p['hora_entrada'] or '-'} → {p['hora_saida'] or '-'}"
+
+        def _status_badge(p):
+            if p['ainda_conectado']:
+                return '<span class="badge on">conectado</span>'
+            return '<span class="badge off">saiu</span>'
+
         presence_rows = ''.join(
-            f"<tr><td>{i}</td><td>{esc(p['label'])}"
+            f"<tr class=\"{'' if p['ainda_conectado'] else 'row-saiu'}\"><td>{i}</td><td>{esc(p['label'])}"
             + (f' <span class="meet-orig">(Meet: "{esc(p["meet_name"])}")</span>' if p['resolved'] else '')
-            + f"</td><td>{esc(p['hora'] or '-')}</td><td>{esc(p['duration_label'] or '-')}</td></tr>"
+            + f"</td><td>{esc(_periodo(p))}</td><td>{esc(p['duration_label'] or '-')}</td>"
+            + f"<td>{_status_badge(p)}</td></tr>"
             for i, p in enumerate(g['presence'], start=1)
-        ) or '<tr><td colspan="4">Nenhum participante identificado.</td></tr>'
+        ) or '<tr><td colspan="5">Nenhum participante identificado.</td></tr>'
 
         absent_items = ''.join(f'<li>{esc(n)}</li>' for n in g['absent']) or '<li>Nenhum — todos presentes.</li>'
 
@@ -275,9 +294,9 @@ def render_html(data):
           </p>
           <div class="group-grid">
             <div>
-              <h3>Presentes ({len(g['presence'])})</h3>
+              <h3>Passaram pelo encontro ({len(g['presence'])})</h3>
               <table>
-                <thead><tr><th>#</th><th>Nome</th><th>Entrou</th><th>Conectado há</th></tr></thead>
+                <thead><tr><th>#</th><th>Nome</th><th>Período</th><th>Tempo total</th><th>Status</th></tr></thead>
                 <tbody>{presence_rows}</tbody>
               </table>
             </div>
@@ -325,6 +344,7 @@ def render_html(data):
   table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
   th, td {{ text-align: left; padding: 5px 6px; border-bottom: 1px solid #eef1f3; }}
   .meet-orig {{ color: #9aa5b1; font-size: 11px; }}
+  .row-saiu {{ opacity: 0.6; }}
   .absent-list {{ font-size: 13px; margin: 0; padding-left: 18px; color: #7a2e2e; }}
   @media (max-width: 800px) {{
     .summary {{ grid-template-columns: 1fr 1fr; }}

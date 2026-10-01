@@ -23,6 +23,7 @@ from .report_store import save_report, list_saved_reports, REPORTS_DIR
 from .rooms import load_rooms
 from .state import STORE
 from .workspace_events import WorkspaceEventsClient
+from . import attendance
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 log = logging.getLogger('meet-monitor')
@@ -108,6 +109,7 @@ async def reconcile_loop():
         rooms = list(STORE.rooms.values())
         await refresh_rooms_parallel(rooms)
         update_formador_presence(rooms)
+        attendance.record(rooms)
         await asyncio.sleep(RECONCILE_SECONDS)
 
 
@@ -158,6 +160,7 @@ async def lifespan(app: FastAPI):
     await refresh_rooms_parallel(rooms, resolve=True)
 
     update_formador_presence(rooms)
+    attendance.record(rooms)
 
     try:
         events = WorkspaceEventsClient(credentials)
