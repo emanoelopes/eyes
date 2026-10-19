@@ -17,6 +17,7 @@ Se nada bater com confiança, devolve o nome do Meet como veio (sem inventar).
 import json
 import re
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 _PATH = Path(__file__).resolve().parent.parent / "data" / "cursistas.json"
@@ -49,6 +50,34 @@ def _tokens(s):
 # (evita bater só por "maria", "de", "da", "dos"...).
 _STOPWORDS = {"de", "da", "do", "das", "dos", "e"}
 
+# Frequência de cada token na lista oficial de CADA turma — usado para
+# identificar palavras "genéricas" (Maria, Silva, José, Sousa...) que,
+# sozinhas ou em dupla, NÃO servem para confirmar identidade: um nome do
+# Meet como "Alcione Maria da Silva Santos Santos" bate em 2 tokens
+# ("maria", "silva") com a cursista real "MARIA ELZA DA SILVA" só por
+# coincidência de sobrenomes/primeiros-nomes comuns — sem nenhum token
+# realmente distintivo em comum ("elza" não aparece, "alcione" não existe
+# na turma). Exigir que pelo menos 1 token do match seja raro na turma
+# evita esse falso-positivo perigoso (mascara intruso como cursista real).
+_TOKEN_FREQ_BY_GROUP = {}
+
+
+def _token_freq(group):
+    if group not in _TOKEN_FREQ_BY_GROUP:
+        counter = Counter()
+        for cand in _MAP.get(group) or []:
+            for t in _tokens(cand) - _STOPWORDS:
+                counter[t] += 1
+        _TOKEN_FREQ_BY_GROUP[group] = counter
+    return _TOKEN_FREQ_BY_GROUP[group]
+
+
+def _has_discriminative_overlap(overlap, group):
+    """True se ao menos 1 token do overlap for raro na turma (aparece em
+    menos de 3 candidatos distintos da lista oficial)."""
+    freq = _token_freq(group)
+    return any(freq.get(t, 0) < 3 for t in overlap)
+
 
 def resolve_full_name(meet_name, group):
     """Retorna (nome_resolvido, encontrado: bool).
@@ -73,6 +102,7 @@ def resolve_full_name(meet_name, group):
     melhor = None
     melhor_score = 0.0
     melhor_overlap = 0
+    melhor_overlap_set = set()
 
     for cand in candidatos:
         cand_tokens = _tokens(cand) - _STOPWORDS
@@ -94,11 +124,19 @@ def resolve_full_name(meet_name, group):
             melhor_score = score
             melhor = cand
             melhor_overlap = len(overlap)
+            melhor_overlap_set = overlap
 
-    # Exige pelo menos 2 tokens fortes em comum OU nome do Meet inteiro
-    # contido no candidato com 1 token forte (nomes de 1 palavra só, ex.
-    # "Debora" -> não teria como confirmar com segurança e fica de fora).
-    if melhor and (melhor_overlap >= 2 or (meet_tokens.issubset(_tokens(melhor) - _STOPWORDS) and melhor_overlap >= 1 and len(meet_tokens) >= 2)):
+    # Exige pelo menos 2 tokens fortes em comum (ou nome do Meet inteiro
+    # contido no candidato com 1 token forte, para nomes de 1 palavra só)
+    # E que pelo menos 1 desses tokens seja raro na turma — evita confirmar
+    # alguém só por coincidência de nomes genéricos como "Maria"/"Silva"
+    # (ver _has_discriminative_overlap: já causou um falso-positivo real,
+    # mascarando um intruso como se fosse uma cursista matriculada).
+    overlap_ok = melhor_overlap >= 2 or (
+        meet_tokens.issubset(_tokens(melhor) - _STOPWORDS) if melhor else False
+    ) and melhor_overlap >= 1 and len(meet_tokens) >= 2
+
+    if melhor and overlap_ok and _has_discriminative_overlap(melhor_overlap_set, group):
         return melhor, True
 
     return meet_name, False
