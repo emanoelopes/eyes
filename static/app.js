@@ -131,10 +131,14 @@ function renderRoom(room) {
                 ${
                     (room.participant_names && room.participant_names.length)
                         ? room.participant_names.map(n => {
-                            const unidentified = (room.unidentified_names || []).includes(n);
-                            return `<li class="${unidentified ? "unidentified" : ""}">${
-                                unidentified ? "⚠️ " : ""
-                            }${esc(n)}</li>`;
+                            const u = (room.unidentified_names || []).find(x => x.name === n);
+                            if (!u) {
+                                return `<li>${esc(n)}</li>`;
+                            }
+                            if (u.status === "outra_turma") {
+                                return `<li class="other-class">🔄 ${esc(n)} <small>(consta em ${esc(u.turma_encontrada)}: ${esc(u.nome_resolvido)})</small></li>`;
+                            }
+                            return `<li class="unidentified">❓ ${esc(n)}</li>`;
                         }).join("")
                         : "<li>Nenhum participante</li>"
                 }
@@ -142,7 +146,14 @@ function renderRoom(room) {
 
             ${
                 (room.unidentified_names && room.unidentified_names.length)
-                    ? `<p class="unidentified-warning">⚠️ ${room.unidentified_names.length} não identificado(s)</p>`
+                    ? (() => {
+                        const outraTurma = room.unidentified_names.filter(u => u.status === "outra_turma").length;
+                        const naoCadastrado = room.unidentified_names.length - outraTurma;
+                        const partes = [];
+                        if (naoCadastrado > 0) partes.push(`❓ ${naoCadastrado} não cadastrado(s)`);
+                        if (outraTurma > 0) partes.push(`🔄 ${outraTurma} de outra turma`);
+                        return `<p class="unidentified-warning">${partes.join(" · ")}</p>`;
+                    })()
                     : ""
             }
 
@@ -303,8 +314,11 @@ async function refresh() {
         document.querySelector("#participants_unique").textContent =
             status.participants_unique ?? status.participants;
 
-        document.querySelector("#unidentified").textContent =
-            status.unidentified ?? 0;
+        document.querySelector("#unidentified_nao_cadastrado").textContent =
+            status.unidentified_nao_cadastrado ?? status.unidentified ?? 0;
+
+        document.querySelector("#unidentified_outra_turma").textContent =
+            status.unidentified_outra_turma ?? 0;
 
         document.querySelector("#recording").textContent =
             status.recording;

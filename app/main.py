@@ -15,7 +15,7 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
-from .cursistas import resolve_full_name
+from .cursistas import resolve_full_name, find_group_for_name
 from .formadores import find_formador_presence, name_matches_formador
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
@@ -98,9 +98,14 @@ def _is_bot_name(name):
 def update_unidentified(rooms):
     """Sinaliza, por sala, quais participantes não batem nem com a lista
     oficial de cursistas da turma (data/cursistas.json) nem com o nome do
-    formador responsável — ou seja, pessoas cuja presença não dá para
-    confirmar automaticamente (nome abreviado demais, visitante, erro de
-    matrícula, etc.). Bots de gravação (read.ai e afins) são ignorados."""
+    formador responsável. Cada entrada traz também uma classificação:
+    - 'outra_turma': o nome bate com um cursista matriculado em OUTRA
+      turma (ex.: pediu troca de sala e a planilha GERAL-Formadores ainda
+      não foi atualizada) — provável mudança de cadastro pendente, não um
+      intruso. Mostra em qual turma o nome foi encontrado.
+    - 'nao_cadastrado': não bate com ninguém em nenhuma turma — merece
+      atenção/verificação manual.
+    Bots de gravação (read.ai e afins) são ignorados em ambos os casos."""
     for room in rooms:
         group = getattr(room, 'group', None)
         names = room.participant_names or []
@@ -112,8 +117,24 @@ def update_unidentified(rooms):
             if group and name_matches_formador(group, name):
                 continue
             _resolved, found = resolve_full_name(name, group) if group else (name, False)
-            if not found:
-                unidentified.append(name)
+            if found:
+                continue
+
+            outro_grupo, resolvido_outro = find_group_for_name(name, exclude_group=group)
+            if outro_grupo:
+                unidentified.append({
+                    'name': name,
+                    'status': 'outra_turma',
+                    'turma_encontrada': outro_grupo,
+                    'nome_resolvido': resolvido_outro,
+                })
+            else:
+                unidentified.append({
+                    'name': name,
+                    'status': 'nao_cadastrado',
+                    'turma_encontrada': None,
+                    'nome_resolvido': None,
+                })
 
         room.unidentified_names = unidentified
 
@@ -278,11 +299,20 @@ def status():
     }
 
     unidentified_unique = {
-        _norm(n)
+        _norm(u.get('name'))
         for r in rooms
-        for n in (r.get('unidentified_names') or [])
-        if n
+        for u in (r.get('unidentified_names') or [])
+        if u and u.get('name')
     }
+
+    unidentified_outra_turma = {
+        _norm(u.get('name'))
+        for r in rooms
+        for u in (r.get('unidentified_names') or [])
+        if u and u.get('status') == 'outra_turma'
+    }
+
+    unidentified_nao_cadastrado = unidentified_unique - unidentified_outra_turma
 
     return {
         'rooms': len(rooms),
@@ -292,6 +322,8 @@ def status():
         'participants': sum(r['participants'] for r in rooms),
         'participants_unique': len(unique_names),
         'unidentified': len(unidentified_unique),
+        'unidentified_outra_turma': len(unidentified_outra_turma),
+        'unidentified_nao_cadastrado': len(unidentified_nao_cadastrado),
         'recording': sum(1 for r in rooms if r['recording']),
         'workspaceSubscription': subscription_info,
     }

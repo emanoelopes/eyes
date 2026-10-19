@@ -180,7 +180,7 @@ input {
 
 .summary {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(8, 1fr);
     gap: 12px;
     margin-bottom: 24px;
 }
@@ -410,6 +410,10 @@ small {
     color: #b45309;
 }
 
+.info-count {
+    color: #2b6cb0;
+}
+
 .unidentified-warning {
     font-size: 11px;
     font-weight: 600;
@@ -424,6 +428,16 @@ small {
 .participants-list li.unidentified {
     color: #b45309;
     font-weight: 600;
+}
+
+.participants-list li.other-class {
+    color: #2b6cb0;
+    font-weight: 600;
+}
+
+.participants-list li.other-class small {
+    color: #5a6472;
+    font-weight: 400;
 }
 
 /* MOBILE */

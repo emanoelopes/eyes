@@ -148,6 +148,24 @@ def roster_for_group(group):
     return list(_MAP.get(group) or [])
 
 
+def find_group_for_name(meet_name, exclude_group=None):
+    """Procura em QUALQUER turma (exceto `exclude_group`) um cursista que
+    bata com `meet_name` pela mesma heurística de resolve_full_name.
+    Útil para diferenciar 'pessoa não cadastrada em lugar nenhum' de
+    'pessoa cadastrada em OUTRA turma' — este segundo caso normalmente
+    indica uma troca de sala solicitada que ainda não foi atualizada na
+    planilha GERAL-Formadores (fonte de verdade), não um intruso real.
+    Retorna (grupo, nome_resolvido) do primeiro achado, ou (None, None).
+    """
+    for group in _MAP:
+        if group == exclude_group:
+            continue
+        resolvido, achou = resolve_full_name(meet_name, group)
+        if achou:
+            return group, resolvido
+    return None, None
+
+
 def absent_students(group, present_full_names):
     """Retorna, em ordem alfabética, os nomes da lista oficial do grupo que
     NÃO batem com nenhum nome já resolvido/presente (`present_full_names`:
