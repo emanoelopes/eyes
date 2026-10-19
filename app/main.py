@@ -228,12 +228,26 @@ def status():
     rooms = STORE.snapshot()
     def is_main(title):
         return str(title).strip().lower().startswith('sala')
+
+    def _norm(name):
+        import unicodedata
+        s = unicodedata.normalize('NFKD', str(name).strip().lower())
+        return ''.join(c for c in s if not unicodedata.combining(c))
+
+    unique_names = {
+        _norm(n)
+        for r in rooms
+        for n in (r.get('participant_names') or [])
+        if n
+    }
+
     return {
         'rooms': len(rooms),
         'active': sum(1 for r in rooms if r['active']),
         'active_rooms': sum(1 for r in rooms if r['active'] and is_main(r['title'])),
         'active_cells': sum(1 for r in rooms if r['active'] and not is_main(r['title'])),
         'participants': sum(r['participants'] for r in rooms),
+        'participants_unique': len(unique_names),
         'recording': sum(1 for r in rooms if r['recording']),
         'workspaceSubscription': subscription_info,
     }

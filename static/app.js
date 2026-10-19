@@ -289,6 +289,9 @@ async function refresh() {
         document.querySelector("#participants").textContent =
             status.participants;
 
+        document.querySelector("#participants_unique").textContent =
+            status.participants_unique ?? status.participants;
+
         document.querySelector("#recording").textContent =
             status.recording;
 
