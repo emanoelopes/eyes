@@ -22,12 +22,15 @@ class RoomState:
     formador: Optional[str] = None
     formador_presente: bool = False
     formador_localizacao: Optional[str] = None
+    unidentified_names: list = None
 
     def __post_init__(self):
         if self.participant_names is None:
             self.participant_names = []
         if self.participant_sessions is None:
             self.participant_sessions = []
+        if self.unidentified_names is None:
+            self.unidentified_names = []
 
     def to_dict(self):
         return asdict(self)

@@ -130,10 +130,21 @@ function renderRoom(room) {
             <ul class="participants-list ${expandedParticipants.has(room.meet_url) ? "" : "hidden"}">
                 ${
                     (room.participant_names && room.participant_names.length)
-                        ? room.participant_names.map(n => `<li>${esc(n)}</li>`).join("")
+                        ? room.participant_names.map(n => {
+                            const unidentified = (room.unidentified_names || []).includes(n);
+                            return `<li class="${unidentified ? "unidentified" : ""}">${
+                                unidentified ? "⚠️ " : ""
+                            }${esc(n)}</li>`;
+                        }).join("")
                         : "<li>Nenhum participante</li>"
                 }
             </ul>
+
+            ${
+                (room.unidentified_names && room.unidentified_names.length)
+                    ? `<p class="unidentified-warning">⚠️ ${room.unidentified_names.length} não identificado(s)</p>`
+                    : ""
+            }
 
             ${
                 room.error
@@ -291,6 +302,9 @@ async function refresh() {
 
         document.querySelector("#participants_unique").textContent =
             status.participants_unique ?? status.participants;
+
+        document.querySelector("#unidentified").textContent =
+            status.unidentified ?? 0;
 
         document.querySelector("#recording").textContent =
             status.recording;

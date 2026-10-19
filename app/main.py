@@ -15,7 +15,8 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
-from .formadores import find_formador_presence
+from .cursistas import resolve_full_name
+from .formadores import find_formador_presence, name_matches_formador
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
 from .report import build_report_data, render_text, render_html
@@ -83,6 +84,39 @@ def handle_event(event_type, payload, attributes):
 
 RECONCILE_CONCURRENCY = 8
 
+# Padrões de nomes que são bots/ferramentas de gravação, não pessoas reais
+# (ex.: o bot do read.ai que entra sozinho em algumas salas). Tratados à
+# parte: não contam como "não identificado" nem como presença humana.
+_BOT_NAME_PATTERNS = ('read.ai', 'otter.ai', 'fireflies', 'meeting notes')
+
+
+def _is_bot_name(name):
+    n = (name or '').strip().lower()
+    return any(p in n for p in _BOT_NAME_PATTERNS)
+
+
+def update_unidentified(rooms):
+    """Sinaliza, por sala, quais participantes não batem nem com a lista
+    oficial de cursistas da turma (data/cursistas.json) nem com o nome do
+    formador responsável — ou seja, pessoas cuja presença não dá para
+    confirmar automaticamente (nome abreviado demais, visitante, erro de
+    matrícula, etc.). Bots de gravação (read.ai e afins) são ignorados."""
+    for room in rooms:
+        group = getattr(room, 'group', None)
+        names = room.participant_names or []
+        unidentified = []
+
+        for name in names:
+            if not name or _is_bot_name(name):
+                continue
+            if group and name_matches_formador(group, name):
+                continue
+            _resolved, found = resolve_full_name(name, group) if group else (name, False)
+            if not found:
+                unidentified.append(name)
+
+        room.unidentified_names = unidentified
+
 
 async def refresh_rooms_parallel(rooms, resolve=False):
     """Atualiza as salas em paralelo (limitado por semáforo) para reduzir a
@@ -109,6 +143,7 @@ async def reconcile_loop():
         rooms = list(STORE.rooms.values())
         await refresh_rooms_parallel(rooms)
         update_formador_presence(rooms)
+        update_unidentified(rooms)
         attendance.record(rooms)
         await asyncio.sleep(RECONCILE_SECONDS)
 
@@ -165,6 +200,7 @@ async def lifespan(app: FastAPI):
     await refresh_rooms_parallel(rooms, resolve=True)
 
     update_formador_presence(rooms)
+    update_unidentified(rooms)
     attendance.record(rooms)
 
     try:
@@ -241,6 +277,13 @@ def status():
         if n
     }
 
+    unidentified_unique = {
+        _norm(n)
+        for r in rooms
+        for n in (r.get('unidentified_names') or [])
+        if n
+    }
+
     return {
         'rooms': len(rooms),
         'active': sum(1 for r in rooms if r['active']),
@@ -248,6 +291,7 @@ def status():
         'active_cells': sum(1 for r in rooms if r['active'] and not is_main(r['title'])),
         'participants': sum(r['participants'] for r in rooms),
         'participants_unique': len(unique_names),
+        'unidentified': len(unidentified_unique),
         'recording': sum(1 for r in rooms if r['recording']),
         'workspaceSubscription': subscription_info,
     }
