@@ -142,6 +142,87 @@ def resolve_full_name(meet_name, group):
     return meet_name, False
 
 
+# Primeiros nomes e sobrenomes extremamente comuns no Brasil — mesmo
+# aparecendo só 1x numa lista pequena de 29-30 cursistas (então
+# tecnicamente "raro" pela frequência do roster), eles NÃO servem como
+# sinal de identidade sozinhos, porque colidem com qualquer pessoa do
+# país. Ex.: "santos" apareceu só 1x na turma CS4 por coincidência, mas
+# é um sobrenome generalíssimo — bater só nele não confirma nada (já
+# gerou uma sugestão falsa juntando "Alcione..." com "Welligton ... dos
+# Santos" só por essa palavra). Usado em suggest_match(), não em
+# resolve_full_name() (que já tem sua própria proteção via frequência
+# por turma).
+_NOMES_SOBRENOMES_GENERICOS = {
+    "maria", "jose", "joao", "francisca", "francisco", "antonio", "antonia",
+    "ana", "carlos", "paulo", "pedro", "luiz", "luis", "marcos", "manoel",
+    "manuel", "raimundo", "rosa", "fatima",
+    "silva", "santos", "sousa", "souza", "oliveira", "pereira", "costa",
+    "rodrigues", "almeida", "nascimento", "carvalho", "gomes", "martins",
+    "araujo", "melo", "barbosa", "ribeiro", "alves", "monteiro", "mendes",
+    "barros", "freitas", "cardoso", "teixeira", "moraes", "morais",
+    "correia", "cavalcante", "dias", "castro", "campos", "vieira",
+    "marques", "lima", "rocha", "fernandes", "pinto", "moreira", "cruz",
+    "reis", "azevedo", "macedo", "siqueira", "nunes", "marinho",
+    "figueiredo", "paiva",
+}
+
+
+def suggest_match(meet_name, group):
+    """Acha um candidato de BAIXA confiança quando resolve_full_name() não
+    confirma nada — cobre apelidos que reduzem a 1 palavra só (ex. 'Jhosy
+    Mota' -> 'JOSE MACHADO MOTA', 'NERINALVA' -> 'NERINALVA RABELO
+    TAVARES', 'Denise Ferro' -> 'MARIA DENICE FERRO') ou pequena diferença
+    de grafia. NUNCA usado para confirmar identidade sozinho — só para
+    sugerir ao formador/TI uma possível correspondência a confirmar
+    visualmente. Busca primeiro na turma atual, depois nas demais.
+    Retorna (grupo_candidato, nome_candidato) ou (None, None).
+    """
+    if not meet_name or not str(meet_name).strip():
+        return None, None
+
+    meet_norm = _normalize(meet_name)
+    meet_toks = _tokens(meet_name) - _STOPWORDS
+    if not meet_toks:
+        return None, None
+
+    import difflib
+
+    grupos_ordenados = ([group] if group else []) + [g for g in _MAP if g != group]
+    melhor = None
+    melhor_grupo = None
+    melhor_score = 0.0
+
+    for g in grupos_ordenados:
+        for cand in _MAP.get(g) or []:
+            cand_toks = _tokens(cand) - _STOPWORDS
+            overlap = meet_toks & cand_toks
+            ratio = difflib.SequenceMatcher(None, meet_norm, _normalize(cand)).ratio()
+
+            # Token raro (<=1 na turma) E que não seja um nome/sobrenome
+            # genérico nacional — só isso conta como sinal real de
+            # identidade. Pura similaridade textual alta, sem token
+            # discriminativo nenhum, também NÃO basta sozinha (evita
+            # "Alcione..." ~ qualquer nome por acaso parecido).
+            freq = _token_freq(g)
+            tokens_fortes = [
+                t for t in overlap
+                if freq.get(t, 0) <= 1 and t not in _NOMES_SOBRENOMES_GENERICOS
+            ]
+
+            if not tokens_fortes:
+                continue
+
+            score = ratio + 0.3
+            if score > melhor_score:
+                melhor_score = score
+                melhor = cand
+                melhor_grupo = g
+
+    if melhor:
+        return melhor_grupo, melhor
+    return None, None
+
+
 def roster_for_group(group):
     """Lista oficial (nomes completos) de cursistas matriculados na sala,
     conforme a aba Turmas da planilha GERAL-Formadores."""

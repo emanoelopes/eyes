@@ -145,6 +145,9 @@ function renderRoom(room) {
                             if (u.status === "outra_turma") {
                                 return `<li class="other-class">🔄 ${esc(n)} <small>(consta em ${esc(u.turma_encontrada)}: ${esc(u.nome_resolvido)})</small></li>`;
                             }
+                            if (u.sugestao_nome) {
+                                return `<li class="unidentified">❓ ${esc(n)} <small>(talvez: ${esc(u.sugestao_nome)}${u.sugestao_turma && u.sugestao_turma !== (room.group || "") ? " em " + esc(u.sugestao_turma) : ""} — confirmar)</small></li>`;
+                            }
                             return `<li class="unidentified">❓ ${esc(n)}</li>`;
                         }).join("")
                         : "<li>Nenhum participante</li>"

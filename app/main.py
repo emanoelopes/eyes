@@ -15,7 +15,7 @@ try:
 except Exception:
     from .auth import get_user_credentials
 from .config import ROOT, ROOMS_CSV, RECONCILE_SECONDS
-from .cursistas import resolve_full_name, find_group_for_name
+from .cursistas import resolve_full_name, find_group_for_name, suggest_match
 from .formadores import find_formador_presence, name_matches_formador
 from .google_meet import MeetClient
 from .pubsub_listener import PubSubListener
@@ -129,11 +129,14 @@ def update_unidentified(rooms):
                     'nome_resolvido': resolvido_outro,
                 })
             else:
+                sugerido_grupo, sugerido_nome = suggest_match(name, group)
                 unidentified.append({
                     'name': name,
                     'status': 'nao_cadastrado',
                     'turma_encontrada': None,
                     'nome_resolvido': None,
+                    'sugestao_turma': sugerido_grupo,
+                    'sugestao_nome': sugerido_nome,
                 })
 
         room.unidentified_names = unidentified
