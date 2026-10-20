@@ -325,6 +325,9 @@ def status():
         'unidentified_outra_turma': len(unidentified_outra_turma),
         'unidentified_nao_cadastrado': len(unidentified_nao_cadastrado),
         'recording': sum(1 for r in rooms if r['recording']),
+        'recording_sem_participantes': sum(
+            1 for r in rooms if r.get('recording_sem_participantes')
+        ),
         'workspaceSubscription': subscription_info,
     }
 

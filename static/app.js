@@ -98,6 +98,7 @@ function renderRoom(room) {
             room
             ${room.active ? "active" : ""}
             ${isMainRoom(room) ? "principal" : ""}
+            ${room.recording_sem_participantes ? "recording-orphan" : ""}
         ">
             <div class="room-head">
                 <div>
@@ -126,6 +127,12 @@ function renderRoom(room) {
                     <span>Gravando</span>
                 </div>
             </div>
+
+            ${
+                room.recording_sem_participantes
+                    ? `<p class="recording-orphan-warning">🔴 Gravando sem ninguém na sala — pare manualmente</p>`
+                    : ""
+            }
 
             <ul class="participants-list ${expandedParticipants.has(room.meet_url) ? "" : "hidden"}">
                 ${
@@ -322,6 +329,9 @@ async function refresh() {
 
         document.querySelector("#recording").textContent =
             status.recording;
+
+        document.querySelector("#recording_sem_participantes").textContent =
+            status.recording_sem_participantes ?? 0;
 
         // Agora mostra a quantidade de BS, e não 70 links.
         document.querySelector("#total").textContent =

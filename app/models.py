@@ -14,6 +14,7 @@ class RoomState:
     participant_names: list = None
     participant_sessions: list = None
     recording: bool = False
+    recording_sem_participantes: bool = False
     conference_record: Optional[str] = None
     start_time: Optional[str] = None
     last_update: Optional[str] = None

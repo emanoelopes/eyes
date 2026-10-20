@@ -148,6 +148,7 @@ class MeetClient:
             room.participant_names = []
             room.participant_sessions = []
             room.recording = False
+            room.recording_sem_participantes = False
             room.start_time = None
             room.error = None
             room.last_update = datetime.now(
@@ -183,6 +184,14 @@ class MeetClient:
 
         except Exception as e:
             errors.append(f"gravação: {e}")
+
+        # Sinaliza gravação "órfã": continua gravando mesmo sem ninguém
+        # na sala (formador e alunos já saíram, mas ninguém parou a
+        # gravação manualmente — fica gastando armazenamento à toa e
+        # pode indicar que alguém esqueceu de encerrar o encontro).
+        room.recording_sem_participantes = bool(
+            room.recording and room.participants == 0
+        )
 
         room.error = " | ".join(errors) if errors else None
 
